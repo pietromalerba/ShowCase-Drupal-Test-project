@@ -1,0 +1,212 @@
+<?php
+
+define('DRUPALCAMP_TICKET_MODEL', 'TICKET');
+define('DRUPALCAMP_SPONSOR_TYPE', 'sponsor');
+
+/**
+ * Implementation of hook_add_to_cart().
+ *
+ * Here we make sure that only unregistered users can purchase a 
+ * ticket to attend.  They get the 'attendee' role after purchasing
+ * a 'TICKET' product.
+ *
+ * In addition we make sure that each member can only add a 
+ * single ticket to their cart.
+ */
+function drupalcamp_add_to_cart($nid, $qty, $data) {
+  global $user;
+  $success = TRUE;
+  $silent = FALSE;
+  
+  // Each member can purchase just one ticket.
+  if ($nid == 1) {
+    if (in_array('attendee', $user->roles)) {
+      $success = FALSE;
+      $message = 'You are already registered.  Pack your laptop and get ready for a great time!';
+    }
+    else {
+      $items = uc_cart_get_contents();
+      foreach ($items as $item) {
+        if ($item->model == DRUPALCAMP_TICKET_MODEL) {
+          $success = FALSE;
+          $silent = TRUE;
+        }
+      }
+    }
+  }
+  $result[] = array(
+    'success' => $success,
+    'message' => $message,
+    'silent' => $silent,
+  );
+  return $result;  
+}
+
+
+/**
+ * Implementation of hook_order().
+ *
+ * We use this hook to tier our ticket pricing.
+ */
+function drupalcamp_order($op, &$arg1, $arg2) {
+
+  // If the order is being submitted.
+  if ($op == 'submit') {
+    
+    // Define our pricing tiers
+    $tiers = array(
+      1 => 5.46,
+      200 => 10.61,
+      300 => 15.76,
+      400 => 20.91
+    );
+    
+    // Go through products in the cart and check if one is a ticket.
+    foreach ($arg1->products as $product) {
+      if ($product->model == DRUPALCAMP_TICKET_MODEL) {
+        // If a ticket is bought, we increase the counter and determine the current ticket price.
+        $count = 1 + variable_get('drupalcamp_tickets_sold', 0);
+        variable_set('drupalcamp_tickets_sold', $count);
+
+        foreach ($tiers as $tier => $amount) {
+          if ($count > $tier) {
+            $new_price = $amount;
+          }
+        }
+        
+        if ($new_price) {
+          variable_set('drupalcamp_ticket_price', $new_price);        
+          db_query("UPDATE {uc_products} SET sell_price = %f WHERE model = '%s'", $new_price, DRUPALCAMP_TICKET_MODEL);
+        }
+
+      }
+    }
+    
+  }
+}
+
+/**
+ * Implementation of hook_form_alter().
+ *
+ * Make sure that users editing a purchased sponsor node
+ * can edit their sponsor profile and NOT be redirected back to 
+ * their cart by uc_node_checkout (its already been purchased...).
+ *
+ * NOTE: We had to edit the weight field for this module in the 'system'
+ * table so that it fires after uc_node_checkout (weight = 101).
+ *
+ * We also want to make sure that non-admin users cannot edit the taxonomy
+ * term that this sponsor node is associated with.  This only happens automatically
+ * after they make their payment.
+ *
+ */
+function drupalcamp_form_alter(&$form, &$form_state, $form_id) {
+  // dsm($form);
+  if ($form_id == 'sponsor_node_form') {
+    drupal_set_title('Become a Sponsor');
+    if ($form['#node']->status) {
+      $form['#redirect'] = 'node/'. $form['nid']['#value'];
+    }
+    if ( ! user_access('edit any '. DRUPALCAMP_SPONSOR_TYPE .' content')) {
+      unset($form['taxonomy']);
+    }
+    else {
+      $form['taxonomy'][2]['#description'] = t('You are an admin, only you can change the sponsorship level.');
+    }
+    
+    // $form['attributes']['#type'] = '';
+    // $form['attributes']['1']['#type'] = 'value';
+    unset($form['buttons']['preview']);
+    if ($form['#node']->status) {
+      drupal_set_title('Edit Sponsor Information');
+      // if ( ! $form['attributes']['1']['#default_value']) {
+      //   unset($form['attributes']);
+      // }
+    }
+    $form['buttons']['#weight'] = 100;
+  }
+  else if ($form_id == 'session_node_form') {
+    drupal_set_title('Session Details');
+    unset($form['buttons']['preview']);
+    $form['buttons']['#weight'] = 100;
+  }
+}
+
+
+/**
+ * Implementation of hook_block().
+ */
+function drupalcamp_block($op = 'list', $delta = 0, $edit = array()) {
+
+  if ($op == 'list') {
+    $blocks[0]['info'] = t('Profile information');
+    $blocks[0]['cache'] = BLOCK_NO_CACHE;
+    return $blocks;
+  }
+  else if ($op == 'configure' && $delta == 0) {
+    // Compile a list of fields to show
+    $fields = array();
+    $result = db_query('SELECT name, title, weight, visibility FROM {profile_fields} WHERE visibility IN (%d, %d) ORDER BY weight', PROFILE_PUBLIC, PROFILE_PUBLIC_LISTINGS);
+    while ($record = db_fetch_object($result)) {
+      $fields[$record->name] = check_plain($record->title);
+    }
+    // $fields['user_profile'] = t('Link to full user profile');  -- Already viewing profile...
+    $form['profile_block_drupalcamp_author_fields'] = array('#type' => 'checkboxes',
+      '#title' => t('Profile fields to display'),
+      '#default_value' => variable_get('profile_block_drupalcamp_author_fields', array()),
+      '#options' => $fields,
+      '#description' => t('Select which profile fields you wish to display in the block. Only fields designated as public in the <a href="@profile-admin">profile field configuration</a> are available.', array('@profile-admin' => url('admin/user/profile'))),
+    );
+    return $form;
+  }
+  else if ($op == 'save' && $delta == 0) {
+    variable_set('profile_block_drupalcamp_author_fields', $edit['profile_block_drupalcamp_author_fields']);
+  }
+  else if ($op == 'view') {
+    if (user_access('access user profiles')) {
+      $output = '';
+      if ((arg(0) == 'user') && is_numeric(arg(1)) && (arg(2) == NULL)) {
+        $account = user_load(array('uid' => arg(1)));
+
+        if ($use_fields = variable_get('profile_block_drupalcamp_author_fields', array())) {
+          // Compile a list of fields to show.
+          $fields = array();
+          $result = db_query('SELECT name, title, type, visibility, weight FROM {profile_fields} WHERE visibility IN (%d, %d) ORDER BY weight', PROFILE_PUBLIC, PROFILE_PUBLIC_LISTINGS);
+          while ($record = db_fetch_object($result)) {
+            // Ensure that field is displayed only if it is among the defined block fields and, if it is private, the user has appropriate permissions.
+            if (isset($use_fields[$record->name]) && $use_fields[$record->name]) {
+              $fields[] = $record;
+            }
+          }
+        }
+
+        if (!empty($fields)) {
+          $profile = _profile_update_user_fields($fields, $account);
+          $output .= theme('profile_block', $account, $profile, TRUE);
+        }
+
+        // if (isset($use_fields['user_profile']) && $use_fields['user_profile']) {
+        //   $output .= '<div>'. l(t('View full user profile'), 'user/'. $account->uid) .'</div>';
+        // }
+      }
+
+      if ($output) {
+        $block['subject'] = t('About %name', array('%name' => $account->name));
+        $block['content'] = $output;
+        return $block;
+      }
+    }
+  }
+}
+
+
+/**
+ * Implementation of hook_user().
+ */
+function drupalcamp_user($op, &$edit, &$account, $category = NULL) {
+  if ($op == 'login') {
+    if ($account->access == 0 && (! in_array('attendee', $account->roles))) {
+      db_query("INSERT INTO {users_roles} (uid, rid) VALUES (%d, %d)", $account->uid, 3);
+    }
+  }
+}

@@ -1,0 +1,4 @@
+name = Promo
+description = System for creating callout blocks with uploaded images.
+core = 6.x
+package = "This By Them"

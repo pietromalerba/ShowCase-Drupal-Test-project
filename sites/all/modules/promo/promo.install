@@ -1,0 +1,90 @@
+<?php
+
+/**
+ * @file
+ * Provide the table definitions to store the promo data.
+ */
+
+/**
+ * Implementation of hook_install().
+ */
+function promo_install() {
+  drupal_install_schema('promo');
+  drupal_set_message('Promo module installed successfully.');
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function promo_uninstall() {
+  drupal_uninstall_schema('promo');
+}
+
+/**
+ * Implementation of hook_schema().
+ */
+function promo_schema() {
+  $schema['promo'] = array(
+    'fields' => array(
+      'pid' => array(
+        'description' => 'Promo id. Each promo gets a unique promo id.',
+        'type' => 'serial',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+      ),
+      'name' => array(
+        'description' => 'Each promo gets a name so it can be identified in the blocks admin forms.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => ''
+      ),
+      'nid' => array(
+        'description' => 'Node id. If a promo is related to a node, this defines that relationship.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+      'link' => array(
+        'description' => 'The path or external URL that this promo links to. NOT REQUIRED. Some promos may just be unlinked banners.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'status' => array(
+        'description' => 'Allows promos to be turned off and on.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'filepath' => array(
+        'description' => 'Path to the uploaded promo asset.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'alt' => array(
+        'description' => 'Alt text to be shown for the image when displayed on the site.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'title' => array(
+        'description' => 'The title is used to distinquish which block is for which promo.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+    ),
+    'indexes' => array(
+      'link' => array('link')),
+    'primary key' => array('pid'),
+  );
+  return $schema;
+}

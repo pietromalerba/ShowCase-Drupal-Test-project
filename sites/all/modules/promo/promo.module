@@ -1,0 +1,154 @@
+<?php
+
+/**
+ * @file
+ * This module provides a local menu item for each node so that the admin can attach a promotional
+ * image to the node to be displayed else where throughout the site.  This module also provides
+ * an admin interface to add generic callouts that can be directed to any web URL.  Once a promo
+ * is created you can then place it anywhere on the site using the normal Drupal Block System.
+ *
+ * Created by Blake Lucchesi (www.thisbythem.com)
+ */
+
+/**
+ * Implementation of hook_perm().
+ */
+function promo_perm() {
+  return array('manage promos');
+} 
+ 
+/**
+ * Implementation of hook_menu().
+ */
+function promo_menu() {
+  $items['admin/content/promo'] = array(
+    'title' => 'Promos',
+    'description' => 'The <em>Promo</em> module provides site administrators with an easy way to upload and place graphic banner callouts throughout the website.',
+    'page callback' => 'promo_dashboard',
+    'access arguments' => array('manage promos'),
+    'file' => 'promo.admin.inc',
+    'type' => MENU_NORMAL_ITEM
+  );
+  $items['admin/content/promo/list'] = array(
+    'title' => 'Promos',
+    'page callback' => 'promo_dashboard',
+    'access arguments' => array('manage promos'),
+    'file' => 'promo.admin.inc',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -100,    
+  );
+  $items['admin/content/promo/add'] = array(
+    'title' => 'Add Promo',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('promo_form', 'add'),
+    'file' => 'promo.admin.inc',
+    'access arguments' => array('manage promos'),
+    'type' => MENU_LOCAL_TASK
+  );
+  $items['node/%node/promo'] = array(
+    'title' => 'Promo',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('promo_form', 'node', NULL, 1),
+    'access arguments' => array('manage promos'),
+    'file' => 'promo.admin.inc',
+    'type' => MENU_LOCAL_TASK
+  );
+  $items['admin/content/promo/%/edit'] = array(
+    'title' => 'Edit Promo',
+    'title callback' => 'promo_edit_title_callback', // Callback used to reset breadcrumbs on edit form.
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('promo_form', 'admin', 3),
+    'access arguments' => array('manage promos'),
+    'file' => 'promo.admin.inc',
+    'type' => MENU_DYNAMIC_CALLBACK
+  );
+  $items['admin/content/promo/%/delete'] = array(
+    'title' => 'Delete Promo',
+    'title callback' => 'promo_edit_title_callback',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('promo_delete', 3),
+    'access arguments' => array('manage promos'),
+    'file' => 'promo.admin.inc',
+    'type' => MENU_DYNAMIC_CALLBACK
+  );
+  return $items;
+}
+
+/**
+ * Implementation of hook_block().
+ */
+function promo_block($op = 'list', $delta = 0, $edit = array()) {
+  if ($op == 'list') {
+    $query = db_query("SELECT pid, name FROM {promo} WHERE status = 1 ORDER BY pid");
+    while ($row = db_fetch_object($query)) {
+      $items[$row->pid] = array('info' => 'Promo: '. $row->name);
+    }
+    return $items;
+  }
+  else if ($op == 'view') {
+    $promo = db_fetch_array(db_query("SELECT * FROM {promo} WHERE pid = %d AND status = 1", $delta));
+    if ($promo['pid']) {
+      $item['subject'] = '';
+      $item['content'] = theme('promo', $promo);
+      return $item;
+    }
+  }
+}
+
+
+/**
+ * Implementation of hook_theme().
+ */
+function promo_theme() {
+  return array(
+    'promo' => array(
+      'arguments' => array('promo' => NULL)
+    ),
+  );
+}
+
+/**
+ * Theme a promo callout.
+ *
+ * @see hook_theme()
+ *
+ * @param array $promo - An array of values containing a promo result.
+ *  Keys are: filepath, link, alt, title
+ *
+ * @return string $output - Themed output for page display.
+ */
+function theme_promo(array $promo = array()) {
+  if ($promo['link'])
+    return l(theme('image', $promo['filepath'], $promo['alt'], $promo['title']), $promo['link'], array('html' => TRUE));
+  
+  return theme('image', $promo['filepath'], $promo['alt'], $promo['title']);
+}
+
+/**
+ * Set breadcrumb on edit form.
+ */
+function promo_edit_title_callback() {
+  $crumbs[] = l(t('Home'), '<front>');
+  $crumbs[] = l(t('Administer'), 'admin');
+  $crumbs[] = l(t('Content management'), 'admin/content');
+  $crumbs[] = l(t('Promos'), 'admin/content/promo');
+  drupal_set_breadcrumb($crumbs);
+}
+
+
+/**
+ * Promo Help Text
+ */
+function _promo_help_text() {
+$output = <<<EOT
+<p>The <em>Promo</em> module provides site administrators with an easy way to upload and place graphic banner callouts throughout the website.
+Promos can be linked to internal paths such as nodes, views, or panel pages OR to external urls like http://google.com or http://myspace.com.  Each promo
+becomes a Drupal <em>block</em>, which can then be placed in any of the regions of the site just like any other Drupal block.</p>
+
+<p>Promotions can be enabled/disabled through either the block administration system or through this promo administration section.  
+The benefit of disabling a promo here is that you can re-enable the promo later on and not have to reconfigure any of the block settings
+you made the first time you setup the block display.  (Normal settings could include only showing the block to certain roles or on certain pages.)
+by using this
+EOT;
+return $output;
+}

@@ -1,0 +1,3 @@
+name = Schedule
+description = DrupalCamp schedule module
+core = 6.x

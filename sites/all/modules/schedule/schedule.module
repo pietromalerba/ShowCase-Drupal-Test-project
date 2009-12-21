@@ -1,0 +1,39 @@
+<?php
+
+define('SCHEDULE_NODE_TYPE', 'session');
+
+/**
+ * Implementation of hook_menu().
+ */
+function schedule_menu() {
+  $items = array();
+  $items['manage/schedule'] = array(
+    'title' => 'Schedule Manager',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('schedule_manage_form'),
+    'file' => 'schedule.admin.inc',
+    'access callback' => 'user_access',
+    'access arguments' => array('manage schedule'),
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function schedule_perm() {
+  return array('manage schedule');
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function schedule_theme() {
+  return array(
+    'schedule_manage_form' => array(
+      'arguments' => array('form' => NULL),
+      'file' => 'schedule.admin.inc',
+    )
+  );
+}
